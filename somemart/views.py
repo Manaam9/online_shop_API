@@ -1,14 +1,17 @@
 import json
 
+import base64
+
+from django.contrib.auth import authenticate
 from django.http import HttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.views import View
 
-from marshmallow.exceptions import MarshmallowError
-
 from somemart.shemas import ItemSchema, ReviewSchema
 from .models import Item, Review
+
+from marshmallow.exceptions import MarshmallowError
 
 
 @method_decorator(csrf_exempt, name='dispatch')  # delete this string on production
@@ -20,7 +23,20 @@ class AddItemView(View):
             document = json.loads(request.body)
             schema = ItemSchema(strict=True)
             item = schema.load(document).data
-            item.save()
+            auth = document['Authorization'].split()
+            if len(auth) == 2:
+                try:
+                    username, password = base64.b64decode(auth[1].encode('ascii')).decode('utf-8').split(":")
+                    user = authenticate(username=username, password=password)
+                    if user.is_staff:
+                        item.save()
+                    else:
+                        return HttpResponse(status=403)
+                except Exception:
+                    return HttpResponse(status=401)
+            else:
+                return HttpResponse(status=401)
+
         except Item.DoesNotExist:
             return HttpResponse({'errors': 'There is no product with such id.'}, status=404)
         except KeyError:
